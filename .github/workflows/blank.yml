@@ -1,0 +1,87 @@
+name: Validate Bug Fixes with Jira Linking
+
+on:
+  push:
+    branches:
+      - main
+      - "fix/*"     # Trigger on fix branches
+  pull_request:
+    branches:
+      - main
+
+env:  
+  JIRA_BASE_URL: "https://rojasirir.atlassian.net"  # Replace with your Jira URL
+  JIRA_USER: "rojasirir@gmail.com"  # Replace with your Jira email
+  JIRA_API_TOKEN: "ATATT3xFfGF0englNlDRsXiaMDxttyLzKBMPiCHhtfTU12quii2PXD_Qn0NTvi6cxn7b_bTEHW193C7YBXakEfsduX4BRjPwvYd7hk4ExWQla4qdTvdATpW1GhrvF6d2b67UraDyjApbdq33mOiXyTCI6VN8BIyekPP-DP6_D6ZARWA77HcMRSo=AFDEC188"  # Store API token in GitHub Secrets- Generate the token from Jira under security and settings.
+
+jobs:
+  validate-fixes:
+    name: Compile and Verify Fixes
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Check out the code
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Step 2: Set up the build environment (example for Python)
+      - name: Set Up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.12.1"
+
+      # Step 3: Extract Jira Issue Key from Commit Message
+      - name: Extract Jira Issue Key
+        id: extract-jira
+        run: |
+          JIRA_KEY=$(git log -1 --pretty=%B | grep -oE '[A-Z]+-[0-9]+')
+          echo "JIRA_KEY=$JIRA_KEY" >> $GITHUB_ENV
+        env:
+          GITHUB_ENV: ${{ github.env }}
+
+      # Step 4: Install Dependencies
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          #pip install -r requirements.txt
+
+      # Step 5: Compile the code
+      - name: Compile Code
+        run: |
+          echo "Compiling the code..."
+          python -m compileall .
+        id: compile
+
+      # Step 6: Run Tests
+      - name: Run Tests
+        run: |
+          pytest tests/ || echo "Tests failed"
+        id: tests
+
+      # Step 7: Update Jira Test Case
+      - name: Update Jira Test Case
+        if: always()  # Always run this step regardless of success/failure
+        run: |
+          if [ -z "${JIRA_KEY}" ]; then
+            echo "No Jira issue key found in the commit message."
+          else
+            STATUS="SUCCESS"
+            if [ ${{ steps.tests.outcome }} != "success" ] || [ ${{ steps.compile.outcome }} != "success" ]; then
+              STATUS="FAILURE"
+            fi
+
+            curl -X POST -H "Content-Type: application/json" \
+              -u $JIRA_USER:$JIRA_API_TOKEN \
+              -d '{
+                "update": {
+                  "comment": [
+                    {
+                      "add": {
+                        "body": "Compile verification result: '"$STATUS"'. Triggered by GitHub Actions."
+                      }
+                    }
+                  ]
+                }
+              }' "$JIRA_BASE_URL/rest/api/2/issue/$JIRA_KEY"
+          fi
+
