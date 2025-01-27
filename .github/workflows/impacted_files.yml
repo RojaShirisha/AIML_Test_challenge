@@ -1,0 +1,60 @@
+name: Generate Bug Fix Report with Impacted Files
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  generate-report:
+    name: Generate Bug Fix Report with Impacted Files
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the Code
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Step 2: Extract Bug Fix Commits
+      - name: Extract Bug Fix Commits
+        id: extract_commits
+        run: |
+          echo "Extracting bug fix commits..."
+          # Get all commits with keywords 'fix' or 'bugfix' since the last tag
+          git log --pretty=format:"%h %s" --name-only --grep='fix\\|bugfix' > bugfix_commits_with_files.txt
+
+      # Step 3: Generate Markdown Document
+      - name: Generate Bug Fix Report
+        id: generate_report
+        run: |
+          echo "# Bug Fix Report" > bugfix_report.md
+          echo "\n## Fixed Bugs with Impacted Files" >> bugfix_report.md
+          echo "\n| Commit Hash | Commit Message | Impacted Files |" >> bugfix_report.md
+          echo "|-------------|----------------|----------------|" >> bugfix_report.md
+
+          # Read bug fix commits and add them to the report
+          while read -r line; do
+            # Check if the line is a commit hash and message
+            if [[ $line =~ ^[a-f0-9]{7}\  ]]; then
+              COMMIT_HASH=$(echo "$line" | awk '{print $1}')
+              COMMIT_MESSAGE=$(echo "$line" | cut -d' ' -f2-)
+              echo "| $COMMIT_HASH | $COMMIT_MESSAGE |" >> bugfix_report.md
+              IMPACTED_FILES=""
+            elif [[ -n $line ]]; then
+              # If the line is an impacted file, append it
+              IMPACTED_FILES="$IMPACTED_FILES<br>$line"
+            else
+              # Add the impacted files to the previous commit entry
+              if [[ -n $IMPACTED_FILES ]]; then
+                sed -i "/$COMMIT_HASH/ s/|$/| $IMPACTED_FILES |/" bugfix_report.md
+              fi
+            fi
+          done < bugfix_commits_with_files.txt
+
+      # Step 4: Commit and Push the Report
+      - name: Commit and Push Report
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "Add Bug Fix Report with Impacted Files"
+          file_pattern: bugfix_report.md
+          branch: main
