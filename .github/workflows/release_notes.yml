@@ -1,0 +1,62 @@
+name: Generate Release Notes
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  generate-release-notes:
+    name: Generate Release Notes
+    runs-on: ubuntu-latest
+
+    steps:
+      # Step 1: Checkout the Code
+      - name: Checkout Code
+        uses: actions/checkout@v3
+
+      # Step 2: Extract Fixes and Impacted Files
+      - name: Extract Fixes and Impacted Files
+        id: extract_fixes
+        run: |
+          echo "Extracting fixes and impacted files..."
+          git log --pretty=format:"%h %s" --name-only --grep='fix\\|bugfix' > fixes_and_files.txt
+
+      # Step 3: Generate Release Notes
+      - name: Generate Release Notes Document
+        id: generate_notes
+        run: |
+          echo "# Release Notes" > release_notes.md
+          echo "\n## Summary of Fixes and Impacts" >> release_notes.md
+          echo "\n| Commit Hash | Description | Impacted Files | Verification Status |" >> release_notes.md
+          echo "|-------------|-------------|----------------|---------------------|" >> release_notes.md
+
+          # Initialize variables for processing
+          IMPACTED_FILES=""
+          VERIFICATION_STATUS="Pending Verification"
+
+          while read -r line; do
+            if [[ $line =~ ^[a-f0-9]{7}\  ]]; then
+              # If the line is a commit message, extract commit hash and description
+              COMMIT_HASH=$(echo "$line" | awk '{print $1}')
+              COMMIT_MESSAGE=$(echo "$line" | cut -d' ' -f2-)
+              echo "| $COMMIT_HASH | $COMMIT_MESSAGE | " >> release_notes.md
+              IMPACTED_FILES=""
+            elif [[ -n $line ]]; then
+              # Append impacted files
+              IMPACTED_FILES="$IMPACTED_FILES<br>$line"
+            else
+              # Update the last line with impacted files and verification status
+              if [[ -n $IMPACTED_FILES ]]; then
+                sed -i "/$COMMIT_HASH/ s/|$/| $IMPACTED_FILES | $VERIFICATION_STATUS |/" release_notes.md
+              fi
+            fi
+          done < fixes_and_files.txt
+
+      # Step 4: Commit and Push Release Notes
+      - name: Commit and Push Release Notes
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "Add Release Notes"
+          file_pattern: release_notes.md
+          branch: main
