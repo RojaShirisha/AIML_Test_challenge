@@ -56,5 +56,5 @@ jobs:
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
           commit_message: "Add Bug Fix Report with Impacted Files"
-          file_pattern: bugfix_report.md
+          file_pattern: impactedfiles_report.md
           branch: main
